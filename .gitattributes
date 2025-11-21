@@ -1,0 +1,16 @@
+# 强制 GitHub Linguist 将仓库语言识别为 Java
+*.java linguist-language=Java
+
+# 将非核心语言文件标记为 vendored/文档，降低对语言统计的影响
+*.md linguist-documentation
+*.ps1 linguist-vendored
+*.cmd linguist-vendored
+Dockerfile linguist-vendored
+docker-compose.yml linguist-vendored
+*.yml linguist-vendored
+*.xml linguist-vendored
+*.html linguist-vendored
+
+# 将辅助目录标记为 vendored（脚本、静态资源），不影响 Java 统计
+scripts/* linguist-vendored
+src/main/resources/static/* linguist-vendored
