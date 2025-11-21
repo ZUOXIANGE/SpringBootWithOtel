@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: todo-app
+  datasource:
+    url: jdbc:h2:mem:todo;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  h2:
+    console:
+      enabled: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+  tracing:
+    enabled: ${MANAGEMENT_TRACING_ENABLED:true}
+    sampling:
+      probability: 1.0
+  opentelemetry:
+    resource-attributes:
+      "service.name": ${spring.application.name}
+      deployment.environment: ${OBS_ENV:dev}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACES_URL:http://localhost:5080/api/default/v1/traces}
+      headers:
+        Authorization: ${OTLP_AUTH_HEADER:}
+        stream-name: ${OTLP_STREAM_NAME:default}
+    metrics:
+      export:
+        enabled: ${OTLP_METRICS_ENABLED:true}
+        url: ${OTLP_METRICS_URL:http://localhost:5080/api/default/v1/metrics}
+        headers:
+          Authorization: ${OTLP_AUTH_HEADER:}
+          stream-name: ${OTLP_STREAM_NAME:default}

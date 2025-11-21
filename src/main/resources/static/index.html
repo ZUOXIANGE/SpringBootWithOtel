@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Todo API 演示</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    h1 { font-size: 20px; margin: 0 0 16px; }
+    .row { display: flex; gap: 24px; flex-wrap: wrap; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; flex: 1 1 380px; }
+    label { display: block; font-size: 13px; margin: 8px 0 4px; }
+    input[type="text"], textarea, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+    button { padding: 8px 12px; border: 1px solid #333; background: #fff; border-radius: 6px; cursor: pointer; }
+    button.primary { background: #0b5; color: #fff; border-color: #0a4; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+    .actions { display: flex; gap: 8px; }
+    .muted { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Todo API 演示</h1>
+  <div class="row">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <strong>列表</strong>
+        <div>
+          <button id="refreshBtn">刷新</button>
+          <button id="clearBtn" style="margin-left:8px;">清空全部</button>
+          <a href="/actuator/health" target="_blank" class="muted" style="margin-left:8px;text-decoration:none;">健康检查</a>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>标题</th>
+            <th>描述</th>
+            <th>完成</th>
+            <th>创建时间</th>
+            <th>更新时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="todosBody"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <strong>创建</strong>
+      <label for="createTitle">标题</label>
+      <input id="createTitle" type="text" placeholder="输入标题">
+      <label for="createDesc">描述</label>
+      <textarea id="createDesc" rows="3" placeholder="输入描述"></textarea>
+      <label for="createCompleted">完成</label>
+      <select id="createCompleted">
+        <option value="false">false</option>
+        <option value="true">true</option>
+      </select>
+      <div style="margin-top:12px;display:flex;gap:8px;">
+        <button id="createBtn" class="primary">创建</button>
+        <span id="createMsg" class="muted"></span>
+      </div>
+    </div>
+    <div class="card">
+      <strong>更新</strong>
+      <label for="updateId">ID</label>
+      <input id="updateId" type="text" placeholder="要更新的ID">
+      <label for="updateTitle">标题</label>
+      <input id="updateTitle" type="text" placeholder="新标题">
+      <label for="updateDesc">描述</label>
+      <textarea id="updateDesc" rows="3" placeholder="新描述"></textarea>
+      <label for="updateCompleted">完成</label>
+      <select id="updateCompleted">
+        <option value="false">false</option>
+        <option value="true">true</option>
+      </select>
+      <div style="margin-top:12px;display:flex;gap:8px;">
+        <button id="updateBtn" class="primary">更新</button>
+        <span id="updateMsg" class="muted"></span>
+      </div>
+    </div>
+    <div class="card">
+      <strong>查询</strong>
+      <label for="queryId">ID</label>
+      <input id="queryId" type="text" placeholder="要查询的ID">
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+        <button id="queryBtn">查询</button>
+        <span id="queryMsg" class="muted"></span>
+      </div>
+    </div>
+    <div class="card">
+      <strong>删除</strong>
+      <label for="deleteId">ID</label>
+      <input id="deleteId" type="text" placeholder="要删除的ID">
+      <div style="margin-top:12px;display:flex;gap:8px;">
+        <button id="deleteBtn" class="primary">删除</button>
+        <span id="deleteMsg" class="muted"></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const api = {
+      list: () => fetch('/api/todos').then(async r => ({ data: await r.json(), traceId: r.headers.get('x-trace-id') })),
+      create: (p) => fetch('/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })
+        .then(async r => ({ data: await r.json(), traceId: r.headers.get('x-trace-id') })),
+      update: (id, p) => fetch(`/api/todos/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })
+        .then(async r => ({ data: await r.json(), traceId: r.headers.get('x-trace-id') })),
+      deleteOne: (id) => fetch(`/api/todos/${id}`, { method: 'DELETE' }).then(r => ({ ok: r.ok, traceId: r.headers.get('x-trace-id') })),
+      clearAll: () => fetch('/api/todos', { method: 'DELETE' }).then(r => ({ ok: r.ok, traceId: r.headers.get('x-trace-id') }))
+    };
+
+    const tbody = document.getElementById('todosBody');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const createBtn = document.getElementById('createBtn');
+    const updateBtn = document.getElementById('updateBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
+    const queryBtn = document.getElementById('queryBtn');
+    const queryMsg = document.getElementById('queryMsg');
+    const createMsg = document.getElementById('createMsg');
+    const updateMsg = document.getElementById('updateMsg');
+    const deleteMsg = document.getElementById('deleteMsg');
+
+    function renderList(items) {
+      tbody.innerHTML = '';
+      items.forEach(t => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${t.id ?? ''}</td>
+          <td>${t.title ?? ''}</td>
+          <td>${t.description ?? ''}</td>
+          <td>${t.completed}</td>
+          <td>${t.createdAt ?? ''}</td>
+          <td>${t.updatedAt ?? ''}</td>
+          <td class="actions">
+            <button data-id="${t.id}" data-title="${t.title ?? ''}" data-desc="${t.description ?? ''}" data-completed="${t.completed}">编辑</button>
+          </td>
+        `;
+        const editBtn = tr.querySelector('button');
+        editBtn.addEventListener('click', () => {
+          document.getElementById('updateId').value = String(editBtn.dataset.id || '');
+          document.getElementById('updateTitle').value = editBtn.dataset.title || '';
+          document.getElementById('updateDesc').value = editBtn.dataset.desc || '';
+          document.getElementById('updateCompleted').value = String(editBtn.dataset.completed) === 'true' ? 'true' : 'false';
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    const traceInfo = document.createElement('div');
+    traceInfo.className = 'muted';
+    traceInfo.style.marginTop = '8px';
+    document.body.appendChild(traceInfo);
+
+    async function refresh() {
+      try {
+        const { data, traceId } = await api.list();
+        renderList(Array.isArray(data) ? data : []);
+        traceInfo.textContent = traceId ? `Trace-Id: ${traceId}` : '';
+      } catch (e) {
+        renderList([]);
+      }
+    }
+
+    refreshBtn.addEventListener('click', refresh);
+    clearBtn.addEventListener('click', async () => {
+      try {
+        const { traceId } = await api.clearAll();
+        traceInfo.textContent = traceId ? `Trace-Id: ${traceId}` : '';
+        refresh();
+      } catch (e) {}
+    });
+    createBtn.addEventListener('click', async () => {
+      createMsg.textContent = '';
+      const title = document.getElementById('createTitle').value.trim();
+      const description = document.getElementById('createDesc').value.trim();
+      const completed = document.getElementById('createCompleted').value === 'true';
+      if (!title) { createMsg.textContent = '标题不能为空'; return; }
+      try {
+        const { data: created, traceId } = await api.create({ title, description, completed });
+        createMsg.textContent = `已创建: #${created.id}`;
+        traceInfo.textContent = traceId ? `Trace-Id: ${traceId}` : '';
+        document.getElementById('createTitle').value = '';
+        document.getElementById('createDesc').value = '';
+        document.getElementById('createCompleted').value = 'false';
+        refresh();
+      } catch (e) {
+        createMsg.textContent = '创建失败';
+      }
+    });
+
+    updateBtn.addEventListener('click', async () => {
+      updateMsg.textContent = '';
+      const id = document.getElementById('updateId').value.trim();
+      const title = document.getElementById('updateTitle').value.trim();
+      const description = document.getElementById('updateDesc').value.trim();
+      const completed = document.getElementById('updateCompleted').value === 'true';
+      if (!id) { updateMsg.textContent = 'ID不能为空'; return; }
+      try {
+        const { data: updated, traceId } = await api.update(id, { title, description, completed });
+        updateMsg.textContent = `已更新: #${updated.id}`;
+        traceInfo.textContent = traceId ? `Trace-Id: ${traceId}` : '';
+        refresh();
+      } catch (e) {
+        updateMsg.textContent = '更新失败';
+      }
+    });
+
+    deleteBtn.addEventListener('click', async () => {
+      deleteMsg.textContent = '';
+      const id = document.getElementById('deleteId').value.trim();
+      if (!id) { deleteMsg.textContent = 'ID不能为空'; return; }
+      try {
+        const { traceId } = await api.deleteOne(id);
+        deleteMsg.textContent = `已删除: #${id}`;
+        traceInfo.textContent = traceId ? `Trace-Id: ${traceId}` : '';
+        refresh();
+      } catch (e) {
+        deleteMsg.textContent = '删除失败';
+      }
+    });
+
+    queryBtn.addEventListener('click', async () => {
+      queryMsg.textContent = '';
+      const id = document.getElementById('queryId').value.trim();
+      if (!id) { queryMsg.textContent = 'ID不能为空'; return; }
+      try {
+        const r = await fetch(`/api/todos/${id}`);
+        if (!r.ok) { queryMsg.textContent = '未找到'; return; }
+        const t = await r.json();
+        queryMsg.textContent = `#${t.id} ${t.title}`;
+      } catch (e) {
+        queryMsg.textContent = '查询失败';
+      }
+    });
+
+    refresh();
+  </script>
+</body>
+</html>
